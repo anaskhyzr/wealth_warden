@@ -33,17 +33,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
     
     try {
-      // Load data in the background
+      // Load data in the background using compute to move work off the main thread
       await compute(_loadDataInBackground, null);
       
       if (!mounted) return;
       
-      // Update transactions in a separate microtask to avoid frame drops
-      Future.microtask(() {
-        if (!mounted) return;
-        final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
-        transactionProvider.loadTransactions();
-      });
+      // Update providers in sequence to avoid concurrent database access
+      if (mounted) {
+        final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
+        await categoryProvider.loadCategories();
+        
+        if (mounted) {
+          final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+          // Set loading state in the provider
+          transactionProvider.setLoading(true);
+          
+          // Load transactions in a separate microtask
+          Future.microtask(() async {
+            try {
+              await transactionProvider.loadTransactions();
+            } catch (e) {
+              debugPrint('Error loading transactions: $e');
+            } finally {
+              if (mounted) {
+                transactionProvider.setLoading(false);
+              }
+            }
+          });
+        }
+      }
     } catch (e) {
       debugPrint('Error refreshing dashboard data: $e');
     } finally {
@@ -348,7 +366,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildRecentTransactions() {
     final transactionProvider = Provider.of<TransactionProvider>(context);
-    final recentTransactions = transactionProvider.getRecentTransactions(5);
+    // Get only current month transactions
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+    final nextMonth = DateTime(now.year, now.month + 1);
+    
+    final recentTransactions = transactionProvider.transactions
+        .where((t) => t.date.isAfter(currentMonth) && t.date.isBefore(nextMonth))
+        .toList()
+        .take(5)
+        .toList();
+    
     final settingsProvider = Provider.of<SettingsProvider>(context);
     final currencySymbol = settingsProvider.currencySymbol;
     
@@ -412,37 +440,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Optimized transaction tile with memoization to reduce rebuilds
   Widget _buildTransactionTile(Transaction transaction, String currencySymbol) {
-    final isExpense = transaction.type.toLowerCase() == 'expense';
-    
-    // Use Provider.of with listen: false to prevent unnecessary rebuilds
+    final isExpense = transaction.isExpense;
     final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
     final categoryIcon = categoryProvider.getCategoryIcon(transaction.category);
     final categoryColor = categoryProvider.getCategoryColor(transaction.category);
     
-    // Use const widgets where possible
+    // Optimize ListTile for better performance
     return ListTile(
-      // Optimize the leading icon with const decorations
+      visualDensity: VisualDensity.compact, // More compact for better performance
       leading: Container(
+        width: 40, // Fixed width to prevent layout shifts
+        height: 40, // Fixed height to prevent layout shifts
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: categoryColor.withOpacity(0.2),
-          borderRadius: const BorderRadius.all(Radius.circular(8)),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(
           categoryIcon,
           color: categoryColor,
-          // Smaller icon size for better performance
-          size: 20,
+          size: 20, // Smaller icon for better performance
         ),
       ),
-      // Pre-format text to avoid doing it during build
       title: Text(
         transaction.description,
-        // Use const text style when possible
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
         // Limit lines to prevent layout shifts
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 14), // Smaller text for better performance
       ),
       subtitle: Text(
         // Pre-format date to avoid doing it during build
@@ -452,7 +477,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       trailing: Text(
         '${isExpense ? '-' : '+'} $currencySymbol${transaction.amount.toStringAsFixed(2)}',
         style: TextStyle(
-          fontSize: 16,
+          fontSize: 14, // Smaller text for better performance
           fontWeight: FontWeight.bold,
           color: isExpense ? AppColors.categoryRed : AppColors.primaryGreen,
         ),
@@ -460,8 +485,146 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Use dense to reduce the height of each tile
       dense: true,
       onTap: () {
-        // Empty function to avoid rebuilds
+        // Show bottom sheet with edit and delete options
+        showModalBottomSheet(
+          context: context,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          builder: (context) => Container(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.edit, color: AppColors.primaryGreen),
+                  title: const Text('Edit Transaction'),
+                  onTap: () {
+                    Navigator.pop(context); // Close bottom sheet
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AddTransactionScreen(
+                          isExpense: isExpense,
+                          transaction: transaction,
+                        ),
+                      ),
+                    ).then((_) {
+                      // Refresh data when returning from edit screen
+                      _refreshData();
+                    });
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('Delete Transaction'),
+                  onTap: () async {
+                    Navigator.pop(context); // Close bottom sheet
+                    
+                    // Show confirmation dialog
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete Transaction'),
+                        content: const Text('Are you sure you want to delete this transaction?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    ) ?? false;
+                    
+                    if (confirm && context.mounted) {
+                      final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+                      final success = await transactionProvider.deleteTransaction(transaction.id!);
+                      
+                      if (context.mounted) {
+                        if (success) {
+                          // Refresh data after successful deletion
+                          _refreshData();
+                          
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Transaction deleted'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Failed to delete transaction'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('View Details'),
+                  onTap: () {
+                    Navigator.pop(context); // Close bottom sheet
+                    
+                    // Show transaction details dialog
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Transaction Details'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildDetailRow('Description', transaction.description),
+                            _buildDetailRow('Amount', '$currencySymbol${transaction.amount.toStringAsFixed(2)}'),
+                            _buildDetailRow('Category', transaction.category),
+                            _buildDetailRow('Date', DateFormat.yMMMd().format(transaction.date)),
+                            _buildDetailRow('Type', isExpense ? 'Expense' : 'Income'),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
       },
+    );
+  }
+  
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Expanded(
+            child: Text(value),
+          ),
+        ],
+      ),
     );
   }
 

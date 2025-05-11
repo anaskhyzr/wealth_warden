@@ -405,4 +405,19 @@ class DatabaseHelper {
     final db = await database;
     await _initializeDefaultCategories(db);
   }
+  
+  // Get all recurring transactions
+  Future<List<Map<String, dynamic>>> getRecurringTransactions() async {
+    final db = await database;
+    try {
+      final List<Map<String, dynamic>> maps = await db.query(
+        'recurring_transactions',
+        orderBy: 'start_date DESC',
+      );
+      return maps;
+    } catch (e) {
+      debugPrint('Error getting recurring transactions: $e');
+      return [];
+    }
+  }
 }

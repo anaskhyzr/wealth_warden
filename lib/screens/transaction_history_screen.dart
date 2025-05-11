@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/providers.dart';
@@ -18,6 +19,16 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> wit
   bool get wantKeepAlive => true; // Keep state alive when switching tabs
   String _selectedFilter = 'All';
   final List<String> _filterOptions = ['All', 'Income', 'Expense'];
+  
+  // Scroll controller for the transaction list
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoading = false;
+  
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,9 +68,33 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> wit
               ),
             ),
           
-          // Transaction list
+          // Transaction list - Wrap in RefreshIndicator for pull-to-refresh
           Expanded(
-            child: _buildTransactionList(),
+            child: RefreshIndicator(
+              onRefresh: () async {
+                setState(() {
+                  _isLoading = true;
+                });
+                
+                // Use a small delay to show the loading indicator
+                await Future.delayed(const Duration(milliseconds: 300));
+                
+                // Refresh transactions
+                try {
+                  final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+                  await transactionProvider.loadTransactions();
+                } catch (e) {
+                  debugPrint('Error refreshing transactions: $e');
+                } finally {
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = false;
+                    });
+                  }
+                }
+              },
+              child: _buildTransactionList(),
+            ),
           ),
         ],
       ),
@@ -126,24 +161,34 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> wit
         // Get filtered transactions
         final transactions = _getFilteredTransactions(transactionProvider);
         
+        if (_isLoading) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+        
         if (transactions.isEmpty) {
           return const Center(
             child: Text('No transactions found'),
           );
         }
         
-        // Using ListView.separated for better performance
-        return ListView.separated(
+        // Use ListView.builder with a key for efficient rebuilds
+        return ListView.builder(
+          key: PageStorageKey('transaction_list_${_selectedFilter}'),
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
           itemCount: transactions.length,
-          // Increase cache extent to reduce rebuilds
-          cacheExtent: 1000,
-          // Use const divider to avoid rebuilding dividers
-          separatorBuilder: (context, index) => const Divider(height: 1),
-          // Optimize item builder
+          // Use cacheExtent to preload items outside the viewport
+          cacheExtent: 500, // Preload more items for smoother scrolling
           itemBuilder: (context, index) {
-            // Use const where possible and avoid unnecessary widget creation
+            // Use compute for expensive operations if needed
             final transaction = transactions[index];
-            return _buildTransactionTile(context, transaction);
+            
+            // Wrap each tile in RepaintBoundary to optimize rendering
+            return RepaintBoundary(
+              child: _buildTransactionTile(context, transaction),
+            );
           },
         );
       },
@@ -166,35 +211,49 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> wit
   }
 
   Widget _buildTransactionTile(BuildContext context, Transaction transaction) {
-    final isExpense = transaction.type.toLowerCase() == 'expense';
-    final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
+    final isExpense = transaction.isExpense;
     final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    
     final currencySymbol = settingsProvider.currencySymbol;
-    final categoryColor = categoryProvider.getCategoryColor(transaction.category);
     
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: categoryColor.withOpacity(0.2),
-        child: Icon(
-          Icons.category,
-          color: categoryColor,
+    // Use a more lightweight Card implementation
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      elevation: 1, // Lower elevation for better performance
+      child: ListTile(
+        dense: true, // Make the tile more compact
+        visualDensity: VisualDensity.compact, // Further optimize density
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: isExpense ? AppColors.expenseRed.withOpacity(0.1) : AppColors.incomeGreen.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            isExpense ? Icons.arrow_downward : Icons.arrow_upward,
+            color: isExpense ? AppColors.expenseRed : AppColors.incomeGreen,
+            size: 20, // Smaller icon for better performance
+          ),
         ),
-      ),
-      title: Text(transaction.description),
-      subtitle: Text(
-        '${DateFormat('MMM d, yyyy').format(transaction.date)} • ${transaction.category}',
-      ),
-      trailing: Text(
-        '${isExpense ? '-' : '+'} $currencySymbol${transaction.amount.toStringAsFixed(2)}',
-        style: TextStyle(
-          color: isExpense ? AppColors.expenseRed : AppColors.incomeGreen,
-          fontWeight: FontWeight.bold,
+        title: Text(
+          transaction.description,
+          maxLines: 1, // Limit to one line to prevent layout shifts
+          overflow: TextOverflow.ellipsis,
         ),
+        subtitle: Text(
+          DateFormat.yMMMd().format(transaction.date),
+          style: const TextStyle(fontSize: 12), // Smaller text for better performance
+        ),
+        trailing: Text(
+          '${isExpense ? '-' : '+'} $currencySymbol${transaction.amount.toStringAsFixed(2)}',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isExpense ? AppColors.expenseRed : AppColors.incomeGreen,
+          ),
+        ),
+        onTap: () {
+          _showTransactionDetails(context, transaction);
+        },
       ),
-      onTap: () {
-        _showTransactionDetails(context, transaction);
-      },
     );
   }
 

@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
 import '../utils/app_theme.dart';
 import 'dashboard_screen.dart';
 import 'transaction_history_screen.dart';
-// Budget screen removed from navbar
 import 'settings_screen.dart';
 import 'enhanced_stats_screen.dart';
-import 'categories_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -16,8 +15,11 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> with AutomaticKeepAliveClientMixin {
+class _MainScreenState extends State<MainScreen> with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   int _currentIndex = 0;
+  bool _isLoading = true;
+  bool _isInitialLoad = true;
+  late AnimationController _loadingAnimationController;
   
   // Using IndexedStack to preserve state and improve performance
   late final List<Widget> _screens = [
@@ -38,31 +40,88 @@ class _MainScreenState extends State<MainScreen> with AutomaticKeepAliveClientMi
   @override
   void initState() {
     super.initState();
-    _loadData();
+    
+    // Initialize loading animation controller
+    _loadingAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+    
+    // Load data with a slight delay to allow UI to render first
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
+  }
+  
+  @override
+  void dispose() {
+    _loadingAnimationController.dispose();
+    super.dispose();
   }
   
   Future<void> _loadData() async {
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = true;
+    });
+    
     try {
-      // Use a more efficient loading strategy with prioritization
+      // First stage: Load only essential data for UI rendering
+      // This makes the initial screen appear faster
       final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
-      
-      // First load categories only as they're needed immediately
       await categoryProvider.loadCategories();
       
-      // Then load transactions in the background
+      // Second stage: Load transactions with a slight delay to allow UI to render first
       if (mounted) {
-        Future.microtask(() async {
+        // Mark initial load as complete to show the UI
+        setState(() {
+          _isInitialLoad = false;
+        });
+        
+        // Use a slight delay before loading transactions
+        await Future.delayed(const Duration(milliseconds: 100));
+        
+        if (mounted) {
+          final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+          transactionProvider.setLoading(true);
+          
+          // Load transactions in a separate isolate
+          Future.microtask(() async {
+            try {
+              await transactionProvider.loadTransactions();
+            } catch (e) {
+              debugPrint('Error loading transactions: $e');
+            } finally {
+              if (mounted) {
+                transactionProvider.setLoading(false);
+                setState(() {
+                  _isLoading = false;
+                });
+              }
+            }
+          });
+        }
+        
+        // Third stage: Load recurring transactions and other non-critical data
+        Future.delayed(const Duration(milliseconds: 500), () async {
+          if (!mounted) return;
           try {
-            final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
-            await transactionProvider.loadTransactions();
+            final recurringProvider = Provider.of<RecurringTransactionProvider>(context, listen: false);
+            await recurringProvider.loadRecurringTransactions();
           } catch (e) {
-            debugPrint('Error loading transactions: $e');
+            debugPrint('Error loading recurring transactions: $e');
           }
         });
       }
     } catch (e) {
       debugPrint('Error loading data: $e');
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isInitialLoad = false;
+        });
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading data: ${e.toString()}')),
         );
@@ -70,18 +129,58 @@ class _MainScreenState extends State<MainScreen> with AutomaticKeepAliveClientMi
     }
   }
   
+  Widget _buildLoadingIndicator() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Use a rotating animation for the loading indicator
+          RotationTransition(
+            turns: _loadingAnimationController,
+            child: Container(
+              width: 60,
+              height: 60,
+              padding: const EdgeInsets.all(8.0),
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryGreen),
+                strokeWidth: 3,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Loading your financial data...',
+            style: TextStyle(
+              fontSize: 16,
+              color: AppColors.darkTextPrimary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'This may take a moment',
+            style: TextStyle(
+              fontSize: 14,
+              color: AppColors.darkTextSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
     
-    // Primary color feature removed
-    
     return Scaffold(
-      // Use IndexedStack to preserve state of each tab
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      // Show loading indicator during initial app load
+      body: _isInitialLoad && _isLoading
+          ? _buildLoadingIndicator()
+          : IndexedStack(
+              index: _currentIndex,
+              children: _screens,
+            ),
       bottomNavigationBar: Container(
         // Optimize the shadow to be less resource-intensive
         decoration: BoxDecoration(
@@ -110,24 +209,26 @@ class _MainScreenState extends State<MainScreen> with AutomaticKeepAliveClientMi
             type: BottomNavigationBarType.fixed,
             elevation: 0,
             // Optimize by using const where possible
-            items: [
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.dashboard),
-                label: 'Dashboard',
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home_outlined),
+                activeIcon: Icon(Icons.home),
+                label: 'Home',
               ),
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.bar_chart),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.bar_chart_outlined),
+                activeIcon: Icon(Icons.bar_chart),
                 label: 'Stats',
               ),
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.settings),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.settings_outlined),
+                activeIcon: Icon(Icons.settings),
                 label: 'Settings',
               ),
             ],
           ),
         ),
       ),
-      // Removed floating action button since we no longer have the transactions tab
     );
   }
   

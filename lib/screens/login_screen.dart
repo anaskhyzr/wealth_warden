@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:local_auth/local_auth.dart';
 import '../main.dart';
 import '../providers/providers.dart';
 
@@ -14,9 +13,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   String _pin = '';
   bool _isLoading = false;
-  bool _isBiometricAuthInProgress = false;
   final List<bool> _dotAnimations = List.generate(4, (_) => false);
-  final LocalAuthentication _localAuth = LocalAuthentication();
 
   @override
   void initState() {
@@ -27,14 +24,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _initAuth() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     await authProvider.initAuth();
-    
-    // Check if biometric authentication is available and enabled
-    if (authProvider.isBiometricAvailable && authProvider.isBiometricEnabled) {
-      // Slight delay to ensure UI is fully rendered before showing biometric prompt
-      Future.delayed(const Duration(milliseconds: 500), () {
-        _authenticateWithBiometrics();
-      });
-    }
   }
 
   Future<void> _verifyPIN() async {
@@ -74,29 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
   
-  Future<void> _authenticateWithBiometrics() async {
-    if (_isBiometricAuthInProgress) return;
-    
-    setState(() => _isBiometricAuthInProgress = true);
-    
-    try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final success = await authProvider.authenticateWithBiometrics();
-      
-      if (success) {
-        if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const MainScreen()),
-        );
-      }
-    } catch (e) {
-      debugPrint('Biometric authentication error: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isBiometricAuthInProgress = false);
-      }
-    }
-  }
+  // Biometric authentication method removed
 
   Future<void> _addDigit(String digit) async {
     if (_isLoading || _pin.length >= 4) return;
@@ -214,23 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 12), // Reduced spacing
-            // Biometric authentication button
-            if (authProvider.isBiometricAvailable && authProvider.isBiometricEnabled)
-              TextButton.icon(
-                onPressed: _isBiometricAuthInProgress || _isLoading ? null : _authenticateWithBiometrics,
-                icon: Icon(
-                  Icons.fingerprint,
-                  color: theme.colorScheme.primary,
-                  size: 28,
-                ),
-                label: Text(
-                  'Use Biometrics',
-                  style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+            // Biometric authentication button removed
             const Spacer(),
             // PIN pad
             Padding(
@@ -260,7 +211,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 16), // Reduced bottom padding
             // Loading indicator
-            if (_isLoading || _isBiometricAuthInProgress)
+            if (_isLoading)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: CircularProgressIndicator(),

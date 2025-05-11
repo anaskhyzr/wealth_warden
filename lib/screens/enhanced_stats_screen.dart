@@ -6,6 +6,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../providers/providers.dart';
 import '../models/transaction.dart';
 import '../utils/app_theme.dart';
+import 'transaction_history_screen.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -44,34 +45,21 @@ class _StatsScreenState extends State<StatsScreen> with AutomaticKeepAliveClient
 
   Future<void> _refreshData() async {
     if (_isLoading) return;
+    if (!mounted) return;
     
     setState(() => _isLoading = true);
     
     try {
-      // Ensure transactions are loaded - but don't wait for completion
+      // Ensure transactions are loaded
       final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
+      await transactionProvider.loadTransactions();
       
-      // Check if we already have transactions to avoid unnecessary loading
-      if (transactionProvider.transactions.isEmpty) {
-        await transactionProvider.loadTransactions();
+      // Process data directly without compute to simplify
+      _processChartData();
+      
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
-      
-      // Use a separate isolate for heavy processing to avoid UI freezes
-      // This prevents the "Skipped X frames" warnings
-      await compute(_processDataInBackground, transactionProvider.transactions)
-          .then((result) {
-        if (!mounted) return;
-        
-        // Update state with processed data
-        setState(() {
-          _incomeSpots = result['incomeSpots'];
-          _expenseSpots = result['expenseSpots'];
-          _maxY = result['maxY'];
-          _categoryExpenses = result['categoryExpenses'];
-          _categoryIncome = result['categoryIncome'];
-          _isLoading = false;
-        });
-      });
     } catch (e) {
       debugPrint('Error refreshing stats data: $e');
       if (mounted) {
@@ -109,17 +97,17 @@ class _StatsScreenState extends State<StatsScreen> with AutomaticKeepAliveClient
       
       // Update daily totals
       if (isIncome) {
-        incomeByDay[date] = (incomeByDay[date] ?? 0) + transaction.amount;
+        incomeByDay[date] = (incomeByDay[date] ?? 0.0) + transaction.amount.toDouble();
       } else {
-        expenseByDay[date] = (expenseByDay[date] ?? 0) + transaction.amount;
+        expenseByDay[date] = (expenseByDay[date] ?? 0.0) + transaction.amount.toDouble();
       }
       
       // Update category totals
       final category = transaction.category;
       if (isIncome) {
-        categoryIncome[category] = (categoryIncome[category] ?? 0) + transaction.amount;
+        categoryIncome[category] = (categoryIncome[category] ?? 0.0) + transaction.amount.toDouble();
       } else {
-        categoryExpenses[category] = (categoryExpenses[category] ?? 0) + transaction.amount;
+        categoryExpenses[category] = (categoryExpenses[category] ?? 0.0) + transaction.amount.toDouble();
       }
     }
     
@@ -296,6 +284,70 @@ class _StatsScreenState extends State<StatsScreen> with AutomaticKeepAliveClient
       appBar: AppBar(
         title: const Text('Statistics'),
         elevation: 0,
+        actions: [
+          // View All Transactions button
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'View All Transactions',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const TransactionHistoryScreen(),
+                ),
+              );
+            },
+          ),
+          // Refresh button
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh data',
+            onPressed: _refreshData,
+          ),
+          // Filter button that shows a dialog with all filter options
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            tooltip: 'Filter',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Filter Options'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Time period selector
+                      const Text('Time Period', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: List.generate(
+                          _periods.length,
+                          (index) => FilterChip(
+                            label: Text(_periods[index]),
+                            selected: _selectedPeriodIndex == index,
+                            onSelected: (selected) {
+                              if (selected) {
+                                Navigator.pop(context);
+                                _onPeriodChanged(index);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -306,29 +358,27 @@ class _StatsScreenState extends State<StatsScreen> with AutomaticKeepAliveClient
               : SingleChildScrollView(
                   child: Column(
                     children: [
-                      // Period selector
+                      // Current period indicator
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: List.generate(
-                              _periods.length,
-                              (index) => Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ChoiceChip(
-                                  label: Text(_periods[index]),
-                                  selected: _selectedPeriodIndex == index,
-                                  onSelected: (selected) {
-                                    if (selected) {
-                                      _onPeriodChanged(index);
-                                    }
-                                  },
-                                  selectedColor: AppColors.primaryGreen.withOpacity(0.7),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.date_range, size: 16),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Period: ${_periods[_selectedPeriodIndex]}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
                                 ),
-                              ),
+                              ],
                             ),
-                          ),
+                            Text(
+                              'Tap filter icon to change',
+                              style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                            ),
+                          ],
                         ),
                       ),
                       

@@ -4,12 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/pin_setup_screen.dart';
-import 'screens/categories_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/enhanced_stats_screen.dart';
-// Budget screen removed
 import 'screens/onboarding_screen.dart';
-import 'screens/biometric_setup_screen.dart';
 import 'screens/transaction_screen.dart';
 import 'providers/providers.dart';
 import 'db/database_helper.dart';
@@ -26,7 +23,6 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => TransactionProvider()),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
-        // Budget provider removed
         ChangeNotifierProvider(create: (_) => RecurringTransactionProvider()),
         ChangeNotifierProvider(create: (_) => BackupProvider()),
       ],
@@ -81,41 +77,42 @@ class _WealthWardenState extends State<WealthWarden> {
   }
 
   Future<void> _initializeProviders() async {
-    // Initialize settings first as other providers may depend on it
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    await settingsProvider.loadSettings();
-    
-    // Primary color feature removed
-    
-    // Initialize auth provider
-    await Provider.of<AuthProvider>(context, listen: false).initAuth();
-    
-    // Initialize other providers
-    await Provider.of<CategoryProvider>(context, listen: false).loadCategories();
-    await Provider.of<TransactionProvider>(context, listen: false).loadTransactions();
-    // Budget provider removed
-    await Provider.of<RecurringTransactionProvider>(context, listen: false).loadRecurringTransactions();
-    
-    // Process any due recurring transactions
-    await Provider.of<RecurringTransactionProvider>(context, listen: false)
-        .processDueRecurringTransactions();
+    try {
+      // Initialize settings first as other providers may depend on it
+      final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+      await settingsProvider.loadSettings();
+      
+      // Initialize auth provider
+      await Provider.of<AuthProvider>(context, listen: false).initAuth();
+      
+      // Initialize categories only at startup - this is needed for the UI
+      await Provider.of<CategoryProvider>(context, listen: false).loadCategories();
+      
+      // Defer loading of other providers until after navigation to main screen
+      // This will make the login to main screen transition much faster
+      // The MainScreen will handle loading transactions and other data
+    } catch (e) {
+      debugPrint('Error initializing providers: $e');
+    }
   }
 
 
   
   @override
   Widget build(BuildContext context) {
-    // Get theme settings from the provider
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    
-    return MaterialApp(
-      title: 'WealthWarden',
-      debugShowCheckedModeBanner: false,
-      themeMode: settingsProvider.themeMode,
-      darkTheme: AppTheme.darkTheme,
-      theme: AppTheme.lightTheme,
-      initialRoute: widget.initialRoute,
-      routes: _buildRoutes(),
+    // Get theme settings from the provider - use listen: true to rebuild when theme changes
+    return Consumer<SettingsProvider>(
+      builder: (context, settingsProvider, _) {
+        return MaterialApp(
+          title: 'WealthWarden',
+          debugShowCheckedModeBanner: false,
+          themeMode: settingsProvider.themeMode,
+          darkTheme: AppTheme.darkTheme,
+          theme: AppTheme.lightTheme,
+          initialRoute: widget.initialRoute,
+          routes: _buildRoutes(),
+        );
+      },
     );
   }
 
@@ -125,7 +122,6 @@ class _WealthWardenState extends State<WealthWarden> {
       '/setup': (context) => const PinSetupScreen(),
       '/login': (context) => const LoginScreen(),
       '/home': (context) => const MainScreen(),
-      '/biometric_setup': (context) => const BiometricSetupScreen(),
     };
   }
 }
@@ -142,11 +138,9 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = [
     const DashboardScreen(),
     const StatsScreen(),
-    const CategoriesScreen(isExpense: true),
     const SettingsScreen(),
   ];
 
-  // Receipt scanner removed
   
   @override
   Widget build(BuildContext context) {
@@ -155,7 +149,6 @@ class _MainScreenState extends State<MainScreen> {
         index: _currentIndex,
         children: _screens,
       ),
-      // Scan button removed
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppColors.darkBackground,
@@ -193,11 +186,6 @@ class _MainScreenState extends State<MainScreen> {
               icon: Icon(Icons.bar_chart_outlined),
               activeIcon: Icon(Icons.bar_chart),
               label: 'Stats',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.category_outlined),
-              activeIcon: Icon(Icons.category),
-              label: 'Categories',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.settings_outlined),

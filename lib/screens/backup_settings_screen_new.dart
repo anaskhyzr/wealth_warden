@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
@@ -103,165 +102,14 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
   Future<void> _restoreFromBackup() async {
     final backupProvider = Provider.of<BackupProvider>(context, listen: false);
     
-    try {
-      // Instead of file picker, show a dialog with available backup files
-      final backupFiles = await backupProvider.getAvailableBackupFiles();
-      
-      if (backupFiles.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No backup files found'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-      
-      // Show dialog to select a backup file
-      final selectedBackup = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Select a backup file'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 300,
-            child: ListView.builder(
-              itemCount: backupFiles.length,
-              itemBuilder: (context, index) {
-                final file = backupFiles[index];
-                final fileName = file.split('/').last;
-                final fileDate = fileName.split('_').first;
-                DateTime? date;
-                try {
-                  date = DateTime.parse(fileDate);
-                } catch (_) {}
-                
-                return ListTile(
-                  title: Text(fileName),
-                  subtitle: date != null 
-                    ? Text(DateFormat.yMMMd().add_jm().format(date))
-                    : null,
-                  onTap: () => Navigator.of(context).pop(file),
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-          ],
-        ),
-      );
-      
-      if (selectedBackup == null) {
-        // User canceled
-        return;
-      }
-      
-      final path = selectedBackup;
-      
-      // Show confirmation dialog
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Restore from Backup'),
-          content: const Text(
-            'This will replace all your current data with the data from the backup. '
-            'This action cannot be undone. Are you sure you want to continue?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Restore'),
-            ),
-          ],
-        ),
-      ) ?? false;
-      
-      if (!confirm) return;
-      
-      setState(() => _isLoading = true);
-      
-      // Show a progress indicator in the UI
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Restoring from backup...'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      
-      final success = await backupProvider.restoreFromBackup(path);
-      
-      if (!mounted) return;
-      
-      if (success) {
-        // Show success message with restart button
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Text('Restore Successful'),
-            content: const Text(
-              'Your data has been restored successfully. '
-              'The app needs to restart to apply all changes.',
-            ),
-            actions: [
-              ElevatedButton(
-                onPressed: () async {
-                  // Refresh all providers
-                  final transactionProvider = Provider.of<TransactionProvider>(context, listen: false);
-                  final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
-                  
-                  // Reload all data
-                  await transactionProvider.loadTransactions();
-                  await categoryProvider.loadCategories();
-                  
-                  // Navigate back to dashboard
-                  if (!mounted) return;
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                  
-                  // Show success message
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('App data refreshed successfully'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                },
-                child: const Text('Restart Now'),
-              ),
-            ],
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(backupProvider.errorMessage ?? 'Failed to restore from backup'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
+    // TODO: Implement file picker to select backup file
+    // For now, just show a message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('File picker is temporarily disabled. Please use the Export/Import Excel options instead.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
   
   // Export to Excel
@@ -319,33 +167,18 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
   Future<void> _importFromExcel() async {
     final backupProvider = Provider.of<BackupProvider>(context, listen: false);
     
-    try {
-      // Show a message that this feature requires file picker
-      // We'll implement a simpler version in the future
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Excel import is temporarily disabled. Please use the backup restore feature instead.'),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 4),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
+    // TODO: Implement file picker to select Excel file
+    // For now, just show a message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('File picker is temporarily disabled.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
   
-  // Share backup file
-  Future<void> _shareBackup() async {
+  // Upload to Google Drive
+  Future<void> _uploadToGoogleDrive() async {
     final backupProvider = Provider.of<BackupProvider>(context, listen: false);
     
     setState(() => _isLoading = true);
@@ -358,15 +191,29 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
         // Create a backup first
         final backupSuccess = await backupProvider.createBackup();
         if (!backupSuccess) {
-          throw Exception('Failed to create backup before sharing');
+          throw Exception('Failed to create backup before uploading');
         }
       }
       
-      // Now share the backup
-      if (backupProvider.lastBackupPath != null) {
-        await backupProvider.shareBackup(backupProvider.lastBackupPath!);
+      // Now upload to Google Drive
+      final success = await backupProvider.backupToGoogleDrive();
+      
+      if (!mounted) return;
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Backup uploaded to Google Drive successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
       } else {
-        throw Exception('No backup file available to share');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(backupProvider.errorMessage ?? 'Failed to upload to Google Drive'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -383,10 +230,107 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     }
   }
   
+  // Download from Google Drive
+  Future<void> _downloadFromGoogleDrive() async {
+    final backupProvider = Provider.of<BackupProvider>(context, listen: false);
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      // Show confirmation dialog
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Restore from Google Drive'),
+          content: const Text(
+            'This will replace all your current data with the data from the backup. '
+            'This action cannot be undone. Are you sure you want to continue?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Restore'),
+            ),
+          ],
+        ),
+      ) ?? false;
+      
+      if (!confirm) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      // Show a progress indicator in the UI
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Downloading from Google Drive...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      
+      final success = await backupProvider.restoreFromGoogleDrive();
+      
+      if (!mounted) return;
+      
+      if (success) {
+        // Show success message with restart button
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Restore Successful'),
+            content: const Text(
+              'Your data has been restored successfully. '
+              'The app needs to restart to apply all changes.',
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  // Restart app logic - for now just pop to login screen
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                },
+                child: const Text('Restart Now'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(backupProvider.errorMessage ?? 'Failed to restore from Google Drive'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
     final backupProvider = Provider.of<BackupProvider>(context);
+    final isGoogleDriveConnected = backupProvider.isGoogleDriveConnected;
     final lastBackupDate = backupProvider.lastBackupDate;
+    final lastGDriveBackupDate = backupProvider.lastGoogleDriveBackupDate != null 
+        ? DateTime.parse(backupProvider.lastGoogleDriveBackupDate!) 
+        : null;
     
     return Scaffold(
       appBar: AppBar(
@@ -454,7 +398,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                 child: ElevatedButton.icon(
                                   onPressed: _createLocalBackup,
                                   icon: const Icon(Icons.save),
-                                  label: const Text('Create'),
+                                  label: const Text('Create Backup'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppColors.primaryGreen,
                                     foregroundColor: Colors.white,
@@ -473,20 +417,113 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  // Google Drive Card
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 16.0),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.0),
+                    ),
+                    color: AppColors.darkCard,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.cloud,
+                                color: AppColors.primaryGreen,
+                                size: 24.0,
+                              ),
                               const SizedBox(width: 8.0),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: _shareBackup,
-                                  icon: const Icon(Icons.share),
-                                  label: const Text('Share'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.darkBackground,
-                                    foregroundColor: Colors.white,
-                                  ),
+                              Text(
+                                'Google Drive',
+                                style: TextStyle(
+                                  fontSize: 18.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: isGoogleDriveConnected
+                                      ? AppColors.darkTextPrimary
+                                      : Colors.grey,
                                 ),
+                              ),
+                              const Spacer(),
+                              Switch(
+                                value: isGoogleDriveConnected,
+                                onChanged: (value) async {
+                                  setState(() => _isLoading = true);
+                                  try {
+                                    if (value) {
+                                      await backupProvider.connectToGoogleDrive();
+                                    } else {
+                                      await backupProvider.disconnectFromGoogleDrive();
+                                    }
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() => _isLoading = false);
+                                    }
+                                  }
+                                },
+                                activeColor: AppColors.primaryGreen,
                               ),
                             ],
                           ),
+                          const SizedBox(height: 8.0),
+                          Text(
+                            isGoogleDriveConnected
+                                ? 'Connected to Google Drive'
+                                : 'Connect to Google Drive to backup your data',
+                            style: TextStyle(
+                              color: AppColors.darkTextSecondary,
+                            ),
+                          ),
+                          if (isGoogleDriveConnected && lastGDriveBackupDate != null) ...[
+                            const SizedBox(height: 8.0),
+                            Text(
+                              'Last Google Drive backup: ${DateFormat.yMMMd().add_jm().format(lastGDriveBackupDate)}',
+                              style: TextStyle(
+                                color: AppColors.darkTextSecondary,
+                                fontSize: 12.0,
+                              ),
+                            ),
+                          ],
+                          if (isGoogleDriveConnected) ...[
+                            const SizedBox(height: 16.0),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: _uploadToGoogleDrive,
+                                    icon: const Icon(Icons.cloud_upload),
+                                    label: const Text('Upload'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.primaryGreen,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8.0),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: _downloadFromGoogleDrive,
+                                    icon: const Icon(Icons.cloud_download),
+                                    label: const Text('Download'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.darkBackground,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),

@@ -6,6 +6,9 @@ class Transaction {
   final String type;
   final String category;
   final String? notes;
+  
+  // Getter to check if transaction is an expense
+  bool get isExpense => type.toLowerCase() == 'expense';
 
   Transaction({
     this.id,

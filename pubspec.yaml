@@ -24,11 +24,7 @@ dependencies:
   google_sign_in: ^6.2.1  # For Google authentication
   googleapis: ^12.0.0  # For accessing Google APIs
   http: ^1.1.0  # For HTTP requests
-  # file_picker: ^5.2.10  # Temporarily disabled due to embedding compatibility issues
-  # speech_to_text: ^6.5.1  # Temporarily disabled due to embedding compatibility issues
-  # image_picker: ^1.0.7  # Removed - no longer needed for receipt scanning
-  # google_mlkit_text_recognition: ^0.11.0  # Removed - no longer needed for OCR on receipts
-
+  # file_picker dependency removed to avoid compatibility issues
 dev_dependencies:
   flutter_test:
     sdk: flutter

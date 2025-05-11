@@ -13,6 +13,7 @@ class AppColors {
   static const darkBackground = Color(0xFF121212);
   static const darkSurface = Color(0xFF1E1E1E);
   static const darkCard = Color(0xFF282828);
+  static const darkAppBar = Color(0xFF1E1E1E);
   static const darkError = Color(0xFFCF6679);
   
   // Text colors
@@ -180,8 +181,8 @@ class AppTheme {
     colorScheme: ColorScheme.light(
       primary: AppColors.primaryGreen,
       secondary: AppColors.accentGreen,
-      surface: AppColors.lightSurface,
-      background: AppColors.lightBackground,
+      surface: const Color(0xFFf5f5f5),
+      background: const Color(0xFFf5f5f5),
       error: AppColors.lightError,
       onPrimary: Colors.black,
       onSecondary: Colors.white,

@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-// file_picker temporarily disabled
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as path;
 import 'package:excel/excel.dart';
@@ -138,26 +137,47 @@ class BackupProvider with ChangeNotifier {
       // Get all data
       final transactions = await _dbHelper.getAllTransactions();
       final categories = await _dbHelper.getCategories();
+      final recurringTransactions = await _dbHelper.getRecurringTransactions();
       
-      // Create backup object
+      // Create backup data map
       final backupData = {
-        'version': 1,
-        'timestamp': DateTime.now().toIso8601String(),
         'transactions': transactions.map((t) => t.toMap()).toList(),
-        'categories': categories.map((c) => c is model.Category ? c.toMap() : {'error': 'Invalid category format'}).toList(),
+        'categories': categories.map((c) => c.toMap()).toList(),
+        'recurringTransactions': recurringTransactions, // Already maps, no need to call toMap()
+        'timestamp': DateTime.now().toIso8601String(),
+        'version': '1.0.0', // Add version info for future compatibility
       };
       
       // Convert to JSON
       final jsonData = jsonEncode(backupData);
       
-      // Save to file
+      // Get backup directory
       final directory = await getApplicationDocumentsDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final backupFile = File(path.join(directory.path, 'wealthwarden_backup_$timestamp.json'));
-      await backupFile.writeAsString(jsonData);
+      final backupDir = Directory('${directory.path}/backups');
       
-      _lastBackupPath = backupFile.path;
+      // Create backups directory if it doesn't exist
+      if (!await backupDir.exists()) {
+        await backupDir.create(recursive: true);
+      }
+      
+      // Create a user-friendly backup filename with date and time
+      final now = DateTime.now();
+      final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final timeStr = '${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}';
+      final backupPath = '${backupDir.path}/WealthWarden_Backup_${dateStr}_${timeStr}.json';
+      
+      // Write backup file
+      final file = File(backupPath);
+      await file.writeAsString(jsonData);
+      
+      // Update last backup info
+      _lastBackupPath = backupPath;
       _lastBackupDate = DateTime.now();
+      
+      // Save to preferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_backup_path', backupPath);
+      await prefs.setString('last_backup_date', _lastBackupDate!.toIso8601String());
       
       notifyListeners();
       return true;
@@ -167,6 +187,123 @@ class BackupProvider with ChangeNotifier {
       return false;
     } finally {
       _setLoading(false);
+    }
+  }
+  
+  // Create a local backup and share it
+  Future<String?> createAndShareLocalBackup() async {
+    _setLoading(true);
+    _clearError();
+    
+    try {
+      // Create the backup
+      final success = await createBackup();
+      
+      if (!success || _lastBackupPath == null) {
+        _setError('Failed to create local backup');
+        return null;
+      }
+      
+      // Copy the backup to a more user-friendly location
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'wealthwarden_backup_$timestamp.ww';
+      final sharePath = '${directory.path}/$fileName';
+      
+      // Copy the file with a more user-friendly extension
+      final originalFile = File(_lastBackupPath!);
+      final shareFile = await originalFile.copy(sharePath);
+      
+      return shareFile.path;
+    } catch (e) {
+      _setError('Failed to create local backup: ${e.toString()}');
+      debugPrint('Error creating local backup: $e');
+      return null;
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  // Get a list of local backups
+  Future<List<Map<String, dynamic>>> getLocalBackups() async {
+    _setLoading(true);
+    _clearError();
+    
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final backupDir = Directory('${directory.path}/backups');
+      
+      if (!await backupDir.exists()) {
+        await backupDir.create(recursive: true);
+        return [];
+      }
+      
+      final files = await backupDir.list().toList();
+      final backups = <Map<String, dynamic>>[];
+      
+      for (final file in files) {
+        if (file is File && file.path.endsWith('.json')) {
+          final fileName = path.basename(file.path);
+          final fileStat = await file.stat();
+          final fileSize = fileStat.size;
+          
+          // Try to parse date from filename
+          DateTime? date;
+          try {
+            final datePart = fileName.split('_').first;
+            date = DateTime.parse(datePart);
+          } catch (e) {
+            // Use file modification time if date parsing fails
+            date = fileStat.modified;
+          }
+          
+          backups.add({
+            'path': file.path,
+            'name': fileName,
+            'size': fileSize,
+            'date': date,
+          });
+        }
+      }
+      
+      // Sort by date, newest first
+      backups.sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+      
+      return backups;
+    } catch (e) {
+      _setError('Failed to get local backups: ${e.toString()}');
+      debugPrint('Error getting local backups: $e');
+      return [];
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  // Get available backup files as a list of paths
+  Future<List<String>> getAvailableBackupFiles() async {
+    try {
+      final backups = await getLocalBackups();
+      return backups.map((backup) => backup['path'] as String).toList();
+    } catch (e) {
+      _setError('Failed to get available backup files: ${e.toString()}');
+      debugPrint('Error getting available backup files: $e');
+      return [];
+    }
+  }
+  
+  // Delete a local backup file
+  Future<bool> deleteLocalBackup(String backupPath) async {
+    try {
+      final file = File(backupPath);
+      if (await file.exists()) {
+        await file.delete();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      _setError('Failed to delete backup: ${e.toString()}');
+      debugPrint('Error deleting backup: $e');
+      return false;
     }
   }
 
@@ -194,22 +331,52 @@ class BackupProvider with ChangeNotifier {
         return false;
       }
       
-      // Clear existing data (optional, could implement merge strategy)
-      // This is a simplified approach - in a real app, you might want to confirm with the user
+      // Get database instance
+      final db = await _dbHelper.database;
       
-      // Restore categories first (due to foreign key constraints)
-      final categoriesData = backupData['categories'] as List<dynamic>;
-      for (final categoryData in categoriesData) {
-        final category = model.Category.fromMap(categoryData as Map<String, dynamic>);
-        await _dbHelper.addCategory(category);
-      }
+      // Begin transaction for atomicity
+      await db.transaction((txn) async {
+        // Clear existing data first
+        await txn.delete('transactions');
+        await txn.delete('categories');
+        if (backupData.containsKey('recurringTransactions')) {
+          await txn.delete('recurring_transactions');
+        }
+        
+        // Restore categories first (due to foreign key constraints)
+        final categoriesData = backupData['categories'] as List<dynamic>;
+        for (final categoryData in categoriesData) {
+          final category = model.Category.fromMap(categoryData as Map<String, dynamic>);
+          // Use transaction object for all operations
+          await txn.insert('categories', category.toMap());
+        }
+        
+        // Restore transactions
+        final transactionsData = backupData['transactions'] as List<dynamic>;
+        for (final transactionData in transactionsData) {
+          final transaction = Transaction.fromMap(transactionData as Map<String, dynamic>);
+          // Use transaction object for all operations
+          await txn.insert('transactions', transaction.toMap());
+        }
+        
+        // Restore recurring transactions if available
+        if (backupData.containsKey('recurringTransactions')) {
+          final recurringTransactionsData = backupData['recurringTransactions'] as List<dynamic>;
+          for (final recurringTransactionData in recurringTransactionsData) {
+            // Use transaction object for all operations
+            await txn.insert('recurring_transactions', recurringTransactionData as Map<String, dynamic>);
+          }
+        }
+      });
       
-      // Restore transactions
-      final transactionsData = backupData['transactions'] as List<dynamic>;
-      for (final transactionData in transactionsData) {
-        final transaction = Transaction.fromMap(transactionData as Map<String, dynamic>);
-        await _dbHelper.addTransaction(transaction);
-      }
+      // Update last backup info
+      _lastBackupPath = backupPath;
+      _lastBackupDate = DateTime.now();
+      
+      // Save to preferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_backup_path', backupPath);
+      await prefs.setString('last_backup_date', _lastBackupDate!.toIso8601String());
       
       notifyListeners();
       return true;

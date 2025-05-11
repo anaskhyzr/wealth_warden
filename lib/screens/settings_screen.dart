@@ -70,9 +70,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
         throw Exception(errorMessage ?? 'Export failed');
       }
       
+      // Show success message with an action to open the file
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export successful: $filePath')),
+        SnackBar(
+          content: const Text('Export successful'),
+          action: SnackBarAction(
+            label: 'Open',
+            onPressed: () {
+              // Open the file using the shareFile method
+              backupProvider.shareFile(filePath);
+            },
+          ),
+        ),
       );
+      
+      // Automatically open the file after a short delay
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          backupProvider.shareFile(filePath);
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,94 +104,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showChangePinDialog() {
+    // Reset PIN values
+    _currentPin = '';
+    _newPin = '';
+    _confirmPin = '';
+    
+    // Create local state variables for the dialog
+    bool showCurrentPin = false;
+    bool showNewPin = false;
+    
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Change PIN'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                obscureText: !_showCurrentPin,
-                decoration: InputDecoration(
-                  labelText: 'Current PIN',
-                  suffixIcon: IconButton(
-                    icon: Icon(_showCurrentPin ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => _showCurrentPin = !_showCurrentPin),
-                  ),
-                ),
-                onChanged: (value) => _currentPin = value,
-              ),
-              TextField(
-                obscureText: !_showNewPin,
-                decoration: InputDecoration(
-                  labelText: 'New PIN',
-                  suffixIcon: IconButton(
-                    icon: Icon(_showNewPin ? Icons.visibility : Icons.visibility_off),
-                    onPressed: () => setState(() => _showNewPin = !_showNewPin),
-                  ),
-                ),
-                onChanged: (value) => _newPin = value,
-              ),
-              TextField(
-                obscureText: !_showNewPin,
-                decoration: InputDecoration(
-                  labelText: 'Confirm PIN',
-                ),
-                onChanged: (value) => _confirmPin = value,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () async {
-                if (_newPin != _confirmPin) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('New PIN and Confirm PIN do not match'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                  return;
-                }
-                
-                try {
-                  final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                  final success = await authProvider.changePin(_currentPin, _newPin);
-                  
-                  if (!context.mounted) return;
-                  
-                  if (success) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('PIN changed successfully')),
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Failed to change PIN. Current PIN may be incorrect.'),
-                        backgroundColor: Colors.red,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change PIN'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    obscureText: !showCurrentPin,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Current PIN',
+                      suffixIcon: IconButton(
+                        icon: Icon(showCurrentPin ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () => setDialogState(() => showCurrentPin = !showCurrentPin),
                       ),
-                    );
-                  }
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error changing PIN: ${e.toString()}'),
-                      backgroundColor: Colors.red,
                     ),
-                  );
-                }
-              },
-              child: const Text('Change'),
-            ),
-          ],
+                    onChanged: (value) => _currentPin = value,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    obscureText: !showNewPin,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'New PIN',
+                      suffixIcon: IconButton(
+                        icon: Icon(showNewPin ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () => setDialogState(() => showNewPin = !showNewPin),
+                      ),
+                    ),
+                    onChanged: (value) => _newPin = value,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    obscureText: !showNewPin,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm New PIN',
+                    ),
+                    onChanged: (value) => _confirmPin = value,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    // Validate inputs
+                    if (_currentPin.isEmpty || _newPin.isEmpty || _confirmPin.isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(content: Text('Please fill all fields')),
+                      );
+                      return;
+                    }
+                    
+                    if (_newPin != _confirmPin) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(content: Text('New PIN and confirmation do not match')),
+                      );
+                      return;
+                    }
+                    
+                    if (_newPin.length < 4) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(content: Text('PIN must be at least 4 digits')),
+                      );
+                      return;
+                    }
+                    
+                    // Change PIN
+                    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                    final success = await authProvider.changePin(_currentPin, _newPin);
+                    
+                    if (!mounted) return;
+                    
+                    if (success) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('PIN changed successfully')),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        SnackBar(content: Text(authProvider.errorMessage ?? 'Failed to change PIN')),
+                      );
+                    }
+                  },
+                  child: const Text('Change'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -204,9 +239,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Categories',
                       trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                       onTap: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => const _CategoryTypeDialog(),
+                        // Navigate directly to income categories page
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const CategoriesScreen(isExpense: false),
+                          ),
                         );
                       },
                     ),
@@ -222,18 +260,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         );
                       },
                     ),
-                    _buildTile(
-                      icon: Icons.file_download,
-                      title: 'Export to Excel',
-                      trailing: _isExporting 
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : null,
-                      onTap: _exportToExcel,
-                    ),
+                    // Excel export button removed - now available in Backup & Restore screen
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -249,8 +276,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       onTap: _showChangePinDialog,
                     ),
-                    // Biometric authentication removed
                   ],
+                ),
+                // Currency selection
+                Consumer<SettingsProvider>(
+                  builder: (context, settingsProvider, child) {
+                    return _buildTile(
+                      icon: Icons.currency_exchange,
+                      title: 'Currency',
+                      trailing: Text(
+                        '${settingsProvider.currencyCode} (${settingsProvider.currencySymbol})',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ),
+                      onTap: () {
+                        // Show currency selection dialog
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Select Currency'),
+                            content: SizedBox(
+                              width: double.maxFinite,
+                              height: 300,
+                              child: ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: SettingsProvider.availableCurrencies.length,
+                                itemBuilder: (context, index) {
+                                  final code = SettingsProvider.availableCurrencies.keys.elementAt(index);
+                                  final symbol = SettingsProvider.availableCurrencies[code]!;
+                                  return ListTile(
+                                    title: Text('$code ($symbol)'),
+                                    selected: code == settingsProvider.currencyCode,
+                                    onTap: () {
+                                      settingsProvider.setCurrency(code);
+                                      Navigator.pop(context);
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Cancel'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
                 _buildSection(
@@ -261,34 +337,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         return _buildTile(
                           icon: Icons.palette,
                           title: 'Theme',
-                          trailing: DropdownButton<ThemeMode>(
-                            value: settingsProvider.themeMode,
-                            underline: const SizedBox(),
-                            onChanged: (ThemeMode? newMode) {
-                              if (newMode != null) {
-                                settingsProvider.setThemeMode(newMode);
-                              }
-                            },
-                            items: const [
-                              DropdownMenuItem(
-                                value: ThemeMode.system,
-                                child: Text('System'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                settingsProvider.themeMode == ThemeMode.system
+                                    ? 'System'
+                                    : settingsProvider.themeMode == ThemeMode.light
+                                        ? 'Light'
+                                        : 'Dark',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.secondary,
+                                ),
                               ),
-                              DropdownMenuItem(
-                                value: ThemeMode.light,
-                                child: Text('Light'),
-                              ),
-                              DropdownMenuItem(
-                                value: ThemeMode.dark,
-                                child: Text('Dark'),
+                              const SizedBox(width: 8),
+                              Icon(
+                                settingsProvider.themeMode == ThemeMode.system
+                                    ? Icons.settings
+                                    : settingsProvider.themeMode == ThemeMode.light
+                                        ? Icons.light_mode
+                                        : Icons.dark_mode,
+                                color: Theme.of(context).colorScheme.secondary,
                               ),
                             ],
                           ),
-                          onTap: () {},
+                          onTap: () {
+                            // Show theme selection dialog
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Select Theme'),
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                      leading: const Icon(Icons.settings),
+                                      title: const Text('System'),
+                                      selected: settingsProvider.themeMode == ThemeMode.system,
+                                      onTap: () {
+                                        settingsProvider.setThemeMode(ThemeMode.system);
+                                        Navigator.pop(context);
+                                      },
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(Icons.light_mode),
+                                      title: const Text('Light'),
+                                      selected: settingsProvider.themeMode == ThemeMode.light,
+                                      onTap: () {
+                                        settingsProvider.setThemeMode(ThemeMode.light);
+                                        Navigator.pop(context);
+                                      },
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(Icons.dark_mode),
+                                      title: const Text('Dark'),
+                                      selected: settingsProvider.themeMode == ThemeMode.dark,
+                                      onTap: () {
+                                        settingsProvider.setThemeMode(ThemeMode.dark);
+                                        Navigator.pop(context);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Cancel'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
                         );
                       },
                     ),
-                    // Primary color switch removed
                   ],
                 ),
                 const SizedBox(height: 24),

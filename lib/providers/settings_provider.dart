@@ -9,7 +9,7 @@ class SettingsProvider with ChangeNotifier {
   
   // Currency settings
   String _currencySymbol = 'Rs';
-  String _currencyCode = 'INR';
+  String _currencyCode = 'PKR';
   
   // Other settings
   bool _showBalance = true;
@@ -26,6 +26,20 @@ class SettingsProvider with ChangeNotifier {
     'red': Color(0xFFE74C3C),
     'purple': Color(0xFF9B59B6),
     'pink': Color(0xFFE91E63),
+  };
+  // Available currencies
+  static const Map<String, String> availableCurrencies = {
+    'PKR': 'Rs',
+    'USD': '\$',
+    'EUR': '€',
+    'GBP': '£',
+    'JPY': '¥',
+    'INR': '₹',
+    'AUD': 'A\$',
+    'CAD': 'C\$',
+    'CNY': '¥',
+    'AED': 'د.إ',
+    'SAR': '﷼',
   };
 
   // Getters
@@ -53,8 +67,9 @@ class SettingsProvider with ChangeNotifier {
       _primaryColor = availableColors['green']!;
       
       // Load currency settings
-      _currencySymbol = prefs.getString('currency_symbol') ?? 'Rs';
-      _currencyCode = prefs.getString('currency_code') ?? 'INR';
+     // Load currency settings
+     _currencySymbol = prefs.getString('currency_symbol') ?? 'Rs';
+     _currencyCode = prefs.getString('currency_code') ?? 'PKR';
       
       // Load other settings
       _showBalance = prefs.getBool('show_balance') ?? true;
@@ -72,49 +87,46 @@ class SettingsProvider with ChangeNotifier {
     }
   }
 
-  // Update theme mode with microtask to avoid setState during build
+  // Update theme mode - simplified to ensure it works reliably
   Future<void> setThemeMode(ThemeMode mode) async {
-    _setLoading(true);
-    
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('theme_mode', mode.index);
-      
+      // Update the theme mode immediately
       _themeMode = mode;
+      notifyListeners();
       
-      // Use microtask to avoid setState during build
-      Future.microtask(() {
-        notifyListeners();
+      // Save to preferences in the background
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setInt('theme_mode', mode.index);
       });
     } catch (e) {
       _setError('Failed to update theme: ${e.toString()}');
       debugPrint('Error updating theme: $e');
-    } finally {
-      _setLoading(false);
     }
   }
 
   // Update currency with microtask to avoid setState during build
-  Future<void> setCurrency(String symbol, String code) async {
-    _setLoading(true);
-    
+  // Update currency - simplified to ensure it works reliably
+  Future<void> setCurrency(String code) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('currency_symbol', symbol);
-      await prefs.setString('currency_code', code);
+      if (!availableCurrencies.containsKey(code)) {
+        return; // Invalid currency code
+      }
       
+      final symbol = availableCurrencies[code]!;
+      
+      // Update immediately
       _currencySymbol = symbol;
       _currencyCode = code;
+      notifyListeners();
       
-      // Use microtask to avoid setState during build
-      Future.microtask(() {
-        notifyListeners();
+      // Save to preferences in the background
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setString('currency_symbol', symbol);
+        prefs.setString('currency_code', code);
       });
     } catch (e) {
       _setError('Failed to update currency: ${e.toString()}');
       debugPrint('Error updating currency: $e');
-    } finally {
-      _setLoading(false);
     }
   }
 
@@ -163,11 +175,12 @@ class SettingsProvider with ChangeNotifier {
   }
 
   // Primary color update method removed as feature is no longer needed
-  }
 
   // Reset all settings to default
   Future<void> resetSettings() async {
     _setLoading(true);
+    _currencySymbol = 'Rs';
+_currencyCode = 'PKR';
     
     try {
       final prefs = await SharedPreferences.getInstance();

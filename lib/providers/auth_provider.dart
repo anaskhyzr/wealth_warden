@@ -1,38 +1,28 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:crypto/crypto.dart';
 
 class AuthProvider with ChangeNotifier {
-  final LocalAuthentication _localAuth = LocalAuthentication();
   bool _isAuthenticated = false;
-  bool _isBiometricAvailable = false;
-  bool _isBiometricEnabled = false;
   bool _isLoading = false;
   String? _errorMessage;
 
   // Getters
   bool get isAuthenticated => _isAuthenticated;
-  bool get isBiometricAvailable => _isBiometricAvailable;
-  bool get isBiometricEnabled => _isBiometricEnabled;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // Initialize authentication state
+  // Initialize authentication state - biometric authentication removed
   Future<void> initAuth() async {
     _setLoading(true);
     
     try {
-      // Check if biometric authentication is available
-      _isBiometricAvailable = await _localAuth.canCheckBiometrics &&
-                              await _localAuth.isDeviceSupported();
-      
-      // Check if biometric authentication is enabled
-      final prefs = await SharedPreferences.getInstance();
-      _isBiometricEnabled = prefs.getBool('biometric_enabled') ?? false;
-      
-      notifyListeners();
+      // Simplified initialization without biometrics
+      // Use microtask to avoid setState during build
+      Future.microtask(() {
+        notifyListeners();
+      });
     } catch (e) {
       _setError('Failed to initialize authentication: ${e.toString()}');
       debugPrint('Error initializing authentication: $e');
@@ -79,7 +69,7 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Verify PIN
+  // Verify PIN with microtask to avoid setState during build
   Future<bool> verifyPin(String pin) async {
     _setLoading(true);
     _clearError();
@@ -98,7 +88,10 @@ class AuthProvider with ChangeNotifier {
       
       if (isValid) {
         _isAuthenticated = true;
-        notifyListeners();
+        // Use microtask to avoid setState during build
+        Future.microtask(() {
+          notifyListeners();
+        });
       } else {
         _setError('Invalid PIN');
       }
@@ -142,76 +135,13 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Enable/disable biometric authentication
-  Future<bool> toggleBiometric(bool enable) async {
-    _setLoading(true);
-    _clearError();
-    
-    try {
-      if (enable && !_isBiometricAvailable) {
-        _setError('Biometric authentication is not available on this device');
-        return false;
-      }
-      
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('biometric_enabled', enable);
-      
-      _isBiometricEnabled = enable;
-      notifyListeners();
-      
-      return true;
-    } catch (e) {
-      _setError('Failed to toggle biometric: ${e.toString()}');
-      debugPrint('Error toggling biometric: $e');
-      return false;
-    } finally {
-      _setLoading(false);
-    }
-  }
-  
-  // Enable biometric authentication (alias for toggleBiometric(true))
-  Future<bool> enableBiometric() async {
-    return toggleBiometric(true);
-  }
-
-  // Authenticate with biometrics
-  Future<bool> authenticateWithBiometrics() async {
-    _setLoading(true);
-    _clearError();
-    
-    try {
-      if (!_isBiometricAvailable || !_isBiometricEnabled) {
-        _setError('Biometric authentication is not available or not enabled');
-        return false;
-      }
-      
-      final authenticated = await _localAuth.authenticate(
-        localizedReason: 'Authenticate to access WealthWarden',
-        options: const AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: true,
-        ),
-      );
-      
-      if (authenticated) {
-        _isAuthenticated = true;
-        notifyListeners();
-      }
-      
-      return authenticated;
-    } catch (e) {
-      _setError('Failed to authenticate with biometrics: ${e.toString()}');
-      debugPrint('Error authenticating with biometrics: $e');
-      return false;
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  // Sign out
+  // Sign out with microtask to avoid setState during build
   void signOut() {
     _isAuthenticated = false;
-    notifyListeners();
+    // Use microtask to avoid setState during build
+    Future.microtask(() {
+      notifyListeners();
+    });
   }
 
   // Helper methods
@@ -221,17 +151,26 @@ class AuthProvider with ChangeNotifier {
     return digest.toString();
   }
 
+  // Use microtask for state updates to avoid setState during build
   void _setLoading(bool loading) {
     _isLoading = loading;
-    notifyListeners();
+    // Use microtask to avoid setState during build
+    Future.microtask(() {
+      notifyListeners();
+    });
   }
 
   void _setError(String message) {
     _errorMessage = message;
-    notifyListeners();
+    // Use microtask to avoid setState during build
+    Future.microtask(() {
+      notifyListeners();
+    });
   }
 
   void _clearError() {
-    _errorMessage = null;
+    if (_errorMessage != null) {
+      _errorMessage = null;
+    }
   }
 }

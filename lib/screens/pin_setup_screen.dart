@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'login_screen.dart';
-import 'biometric_setup_screen.dart';
 import '../providers/providers.dart';
 
 class PinSetupScreen extends StatefulWidget {
@@ -47,19 +46,13 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
       if (!mounted) return;
 
       if (success) {
-        // Navigate to biometric setup screen if biometrics are available
-        if (authProvider.isBiometricAvailable) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const BiometricSetupScreen(isFirstTimeSetup: true)),
-          );
-        } else {
-          // If biometrics not available, go directly to main screen
-          Navigator.of(context).pushReplacementNamed('/home');
-        }
+        // Biometric authentication removed, go directly to login screen
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
       } else {
-        final errorMessage = authProvider.errorMessage;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage ?? 'Failed to set up PIN')),
+          const SnackBar(content: Text('Failed to set up PIN. Please try again.')),
         );
       }
     } catch (e) {

@@ -391,6 +391,11 @@ class TransactionProvider with ChangeNotifier {
     _isLoading = loading;
     notifyListeners();
   }
+  
+  // Public method to set loading state from outside the provider
+  void setLoading(bool loading) {
+    _setLoading(loading);
+  }
 
   void _setError(String message) {
     _errorMessage = message;
